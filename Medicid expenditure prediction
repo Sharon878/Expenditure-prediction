@@ -1,0 +1,84 @@
+import pandas as pd
+import numpy as np
+from prophet import Prophet
+import matplotlib.pyplot as plt
+
+# Load your data
+data = pd.read_excel('/Users/zhuqianyue/Desktop/total cost over 10 years.xlsx')
+
+# Extract the yearly data
+years = data['Year']
+expenditures = data['Expenditure']
+
+# Create a date range for the monthly data over the past 10 years
+date_range = pd.date_range(start=f'{years.iloc[0]}-01-01', end=f'{years.iloc[-1]}-12-01', freq='MS')
+
+# Initialize the list to hold all monthly expenditures
+monthly_expenditures = []
+
+# Calculate the monthly expenditures using the growth rate
+for i in range(len(expenditures) - 1):
+    start_expenditure = expenditures.iloc[i]
+    end_expenditure = expenditures.iloc[i+1]
+    monthly_growth_rate = (end_expenditure / start_expenditure) ** (1/12)
+    
+    monthly_values = [start_expenditure / 12]
+    for j in range(1, 12):
+        monthly_values.append(monthly_values[-1] * monthly_growth_rate)
+    
+    # Append the calculated monthly expenditures
+    monthly_expenditures.extend(monthly_values)
+
+# Add the last year's data, assuming it follows the last calculated growth pattern
+monthly_expenditures_last_year = [monthly_expenditures[-1] * monthly_growth_rate] * 12
+monthly_expenditures.extend(monthly_expenditures_last_year)
+
+# Create a pandas Series for the monthly data with calculated expenditures
+monthly_series_calculated = pd.Series(monthly_expenditures, index=date_range)
+
+# Prepare the data for the Prophet model
+monthly_data = pd.DataFrame({
+    'ds': date_range,
+    'y': monthly_series_calculated
+})
+
+# Split the data into training (2013-2019) and testing (2020-2023)
+train_data = monthly_data[monthly_data['ds'] < '2020-01-01']
+test_data = monthly_data[monthly_data['ds'] >= '2020-01-01']
+
+# Initialize the Prophet model
+model = Prophet()
+
+# Fit the model on the training data
+model.fit(train_data)
+
+# Make predictions for the testing period (2020-2023)
+future = model.make_future_dataframe(periods=len(test_data), freq='MS')
+forecast = model.predict(future)
+
+# Plot the forecasted vs actual values
+plt.figure(figsize=(12, 6))
+plt.plot(test_data['ds'], test_data['y'], label='Actual (2020-2023)', marker='o')
+plt.plot(forecast['ds'], forecast['yhat'], label='Forecasted (2020-2023)', linestyle='--')
+plt.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], color='gray', alpha=0.2)
+plt.title('Model Validation: Actual vs Forecasted (2020-2023)')
+plt.xlabel('Date')
+plt.ylabel('Expenditure')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Forecast the next 10 years (2024-2034)
+future_extended = model.make_future_dataframe(periods=120, freq='MS')
+forecast_extended = model.predict(future_extended)
+
+# Plot the forecast for 2024-2034
+plt.figure(figsize=(12, 6))
+plt.plot(forecast_extended['ds'], forecast_extended['yhat'], label='Forecasted (2024-2034)', linestyle='--')
+plt.fill_between(forecast_extended['ds'], forecast_extended['yhat_lower'], forecast_extended['yhat_upper'], color='gray', alpha=0.2)
+plt.title('Expenditure Forecast (2024-2034)')
+plt.xlabel('Date')
+plt.ylabel('Expenditure')
+plt.legend()
+plt.grid(True)
+plt.show()
